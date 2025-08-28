@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nelson Finances — Dashboard</title>
+<style>
+  :root{
+    --ink:#e5e7eb; --muted:#9ca3af; --panel:rgba(3,10,24,.72);
+    --border:rgba(255,255,255,.18); --accent:#22c55e; --danger:#ef4444;
+  }
+  html,body{height:100%}
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;
+    color:var(--ink);
+    background:
+      linear-gradient(180deg, rgba(7,10,20,.75), rgba(7,10,20,.75)),
+      url('https://upload.wikimedia.org/wikipedia/commons/2/23/Floridakeys-nasa.jpg') center/cover fixed no-repeat;
+  }
+  header{padding:16px 24px;border-bottom:1px solid var(--border);background:var(--panel);backdrop-filter: blur(6px)}
+  h1{margin:0;font-size:22px}
+  .pill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:2px 8px;margin-left:8px;color:#bcd7ff;font-size:12px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  button,input{background:rgba(15,28,46,.7);border:1px solid var(--border);color:var(--ink);padding:8px 10px;border-radius:10px}
+  button.accent{background:#062413;border-color:#1f5737;color:#c4f5d5}
+  .muted{color:var(--muted)} .small{font-size:12px} .center{text-align:center} .right{text-align:right}
+  .section-title{text-align:center;text-decoration:underline;margin:0 0 10px 0}
+
+  main{display:grid;gap:16px;grid-template-columns:1fr 1fr;padding:16px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px 16px;backdrop-filter: blur(6px)}
+  .card.wide{grid-column:1 / -1}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{border-bottom:1px solid var(--border);padding:8px}
+  th{color:#bcd7ff;font-weight:600}
+  .tot{font-weight:700}
+  .xmlbox{white-space:pre-wrap;max-height:280px;overflow:auto;background:rgba(0,0,0,.35);border:1px dashed var(--border);border-radius:12px;padding:10px}
+
+  canvas{width:100%;height:280px;background:rgba(255,255,255,0.03);border:1px dashed var(--border);border-radius:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Nelson Finances <span class="pill">Local · XML</span></h1>
+  <div class="toolbar">
+    <input type="file" id="fileInput" accept=".xml" />
+    <button id="btnLoad">Load XML</button>
+    <button id="btnSample">Load PDF-based Sample</button>
+    <button id="btnDownload" class="accent">Download Current XML</button>
+    <span class="muted" id="status"></span>
+  </div>
+</header>
+
+<main>
+  <section class="card" id="secUtilities">
+    <h2 class="section-title">Utilities</h2>
+    <table id="tblUtilities">
+      <thead>
+        <tr><th>Name</th><th class="right">Monthly Amount</th><th class="center">Due Day</th></tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr><td class="tot">Sum of utility bills (per month)</td><td id="sumUtilities" class="right tot">$0.00</td><td></td></tr>
+      </tfoot>
+    </table>
+    <div style="height:12px"></div>
+    <canvas id="utilChart" width="700" height="280" aria-label="Utilities bar chart"></canvas>
+  </section>
+
+  <section class="card" id="secRevolving">
+    <h2 class="section-title">Revolving Balances</h2>
+    <table id="tblRevolving">
+      <thead>
+        <tr><th>Name</th><th class="right">Balance</th><th class="center">Status</th></tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr><td class="tot">Total revolving balance</td><td id="sumRevolving" class="right tot">$0.00</td><td></td></tr>
+      </tfoot>
+    </table>
+    <div style="height:12px"></div>
+    <div id="mortgageCard" class="card" style="padding:10px">
+      <strong>Mortgage — Total Left:</strong> <span id="mortgageLeft">$0.00</span>
+    </div>
+  </section>
+
+  <section class="card wide" id="secIncome">
+    <h2 class="section-title">Monthly Income</h2>
+    <table id="tblIncome">
+      <thead>
+        <tr><th>Person</th><th class="right">Month</th><th class="right">Amount</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div style="height:12px"></div>
+    <canvas id="incomeChart" width="1100" height="300" aria-label="Income by month"></canvas>
+  </section>
+
+  <section class="card wide" id="secXml">
+    <details open>
+      <summary>Current XML snapshot</summary>
+      <pre id="xmlPreview" class="xmlbox"></pre>
+    </details>
+  </section>
+</main>
+
+<script>
+let state = { accounts: [], bills: [], incomesMonthly: [], loans: [] };
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const statusEl = $("#status");
+
+const uid   = p => p + Math.random().toString(36).slice(2,8);
+const money = n => '$' + (isNaN(n)?'0.00':Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}));
+const ymSort = (a,b)=> a.localeCompare(b);
+const today = () => new Date().toISOString().slice(0,10);
+
+function sanitizeXmlInput(text){ if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); return text.replace(/\r\n?/g, '\n'); }
+function parseXmlOrThrow(text){
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, "application/xml");
+  const err = doc.querySelector("parsererror");
+  if (err) { throw new Error(err.textContent.replace(/\s+/g,' ').trim()); }
+  return doc;
+}
+function stateFromXmlText(text){
+  const doc = parseXmlOrThrow(sanitizeXmlInput(text));
+  const bills = Array.from(doc.querySelectorAll("Bills > Bill")).map(B=>({
+    id: B.getAttribute("id") || uid("b"),
+    name: B.getAttribute("name") || "",
+    amount: Number(B.getAttribute("amount") || 0),
+    currency: B.getAttribute("currency") || "USD",
+    frequency: B.getAttribute("frequency") || "monthly",
+    dueDay: Number(B.getAttribute("dueDay") || "") || "",
+    category: (B.getAttribute("category") || "").toLowerCase()
+  }));
+  const accounts = Array.from(doc.querySelectorAll("Accounts > Account")).map(A=>{
+    const balEl = A.querySelector("Balance");
+    return {
+      id: A.getAttribute("id") || uid("a"),
+      name: A.getAttribute("name") || "",
+      type: A.getAttribute("type") || "checking",
+      currency: A.getAttribute("currency") || "USD",
+      status: A.getAttribute("status") || "",
+      balance: balEl ? { value: Number(balEl.textContent||0), date: balEl.getAttribute("date")||"" } : {value:0,date:""}
+    };
+  });
+  const loans = Array.from(doc.querySelectorAll("Loans > Loan")).map(L=>{
+    const P = L.querySelector("PrincipalLeft");
+    return { id:L.getAttribute("id")||uid("l"), name:L.getAttribute("name")||"Loan", currency:L.getAttribute("currency")||"USD",
+             principalLeft: P ? Number(P.textContent||0) : 0, date: P ? (P.getAttribute("date")||"") : "" };
+  });
+  const incomesMonthly = Array.from(doc.querySelectorAll("IncomesMonthly > IncomeMonth")).map(I=>({
+    person: I.getAttribute("person") || "",
+    ym: I.getAttribute("ym") || "",
+    amount: Number(I.getAttribute("amount") || 0),
+    currency: I.getAttribute("currency") || "USD"
+  }));
+  return {accounts,bills,incomesMonthly,loans};
+}
+function xmlFromState(){
+  const doc = document.implementation.createDocument("", "", null);
+  const root = doc.createElement("FinanceData"); root.setAttribute("version","1.1"); doc.appendChild(root);
+  const bRoot = doc.createElement("Bills");
+  state.bills.forEach(b=>{ const B = doc.createElement("Bill");
+    B.setAttribute("id", b.id); B.setAttribute("name", b.name); B.setAttribute("amount", String(b.amount ?? 0));
+    B.setAttribute("currency", b.currency || "USD"); B.setAttribute("frequency", b.frequency || "monthly");
+    if(b.dueDay) B.setAttribute("dueDay", String(b.dueDay)); if(b.category) B.setAttribute("category", b.category);
+    bRoot.appendChild(B);
+  }); root.appendChild(bRoot);
+  const aRoot = doc.createElement("Accounts");
+  state.accounts.forEach(a=>{ const A = doc.createElement("Account");
+    A.setAttribute("id", a.id); A.setAttribute("name", a.name); A.setAttribute("type", a.type);
+    A.setAttribute("currency", a.currency || "USD"); if(a.status) A.setAttribute("status", a.status);
+    if(a.balance){ const B = doc.createElement("Balance"); if(a.balance.date) B.setAttribute("date", a.balance.date);
+      B.textContent = String(a.balance.value ?? 0); A.appendChild(B); }
+    aRoot.appendChild(A);
+  }); root.appendChild(aRoot);
+  if(state.loans?.length){ const lRoot = doc.createElement("Loans");
+    state.loans.forEach(l=>{ const L = doc.createElement("Loan");
+      L.setAttribute("id", l.id); L.setAttribute("name", l.name); L.setAttribute("currency", l.currency || "USD");
+      const P = doc.createElement("PrincipalLeft"); if(l.date) P.setAttribute("date", l.date); P.textContent = String(l.principalLeft ?? 0);
+      L.appendChild(P); lRoot.appendChild(L);
+    }); root.appendChild(lRoot);
+  }
+  if(state.incomesMonthly?.length){ const iRoot = doc.createElement("IncomesMonthly");
+    state.incomesMonthly.forEach(im=>{ const I = doc.createElement("IncomeMonth");
+      I.setAttribute("person", im.person); I.setAttribute("ym", im.ym); I.setAttribute("amount", String(im.amount ?? 0));
+      I.setAttribute("currency", im.currency || "USD"); iRoot.appendChild(I);
+    }); root.appendChild(iRoot);
+  }
+  return new XMLSerializer().serializeToString(doc);
+}
+function render(){
+  const utilities = state.bills.filter(b => b.category==='utility' || /^utility-/i.test(b.name));
+  const tbU = document.querySelector("#tblUtilities tbody"); tbU.innerHTML = "";
+  let sumU = 0; utilities.forEach(u=>{ sumU += (u.amount||0);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${u.name}</td><td class="right">${money(u.amount||0)}</td><td class="center">${u.dueDay?u.dueDay:''}</td>`;
+    tbU.appendChild(tr);
+  });
+  document.getElementById("sumUtilities").textContent = money(sumU);
+
+  const credits = state.accounts.filter(a => (a.type||'').toLowerCase()==='credit');
+  const tbR = document.querySelector("#tblRevolving tbody"); tbR.innerHTML = "";
+  let sumR = 0; credits.forEach(a=>{ const val = Math.abs(Number(a.balance?.value||0)); sumR += val;
+    const tr = document.createElement("tr"); tr.innerHTML = `<td>${a.name}</td><td class="right">${money(val)}</td><td class="center">${a.status||''}</td>`;
+    tbR.appendChild(tr);
+  });
+  document.getElementById("sumRevolving").textContent = money(sumR);
+
+  const mort = state.loans.find(l => /mortgage/i.test(l.name)) || null;
+  document.getElementById("mortgageLeft").textContent = money(mort ? mort.principalLeft : 0);
+
+  const tbI = document.querySelector("#tblIncome tbody"); tbI.innerHTML = "";
+  const ims = state.incomesMonthly.slice().sort((a,b)=> (a.person===b.person) ? ymSort(a.ym,b.ym) : a.person.localeCompare(b.person));
+  ims.forEach(im=>{ const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${im.person}</td><td class="right">${im.ym}</td><td class="right">${money(im.amount)}</td>`;
+    tbI.appendChild(tr);
+  });
+
+  document.getElementById("xmlPreview").textContent = prettyXml(xmlFromState());
+
+  drawUtilBars(document.getElementById("utilChart"), utilities.map(u=>({label:u.name.replace(/^Utility-?/i,''), value:Number(u.amount||0)})));
+  drawIncomeLines(document.getElementById("incomeChart"), state.incomesMonthly);
+}
+function prettyXml(xml){
+  const P = />(\s*)</g; let formatted = ''; let pad = 0;
+  xml.replace(P, '>\n<').split('\n').forEach(node=>{
+    if(/^<\//.test(node)) pad--;
+    formatted += '  '.repeat(pad) + node + '\n';
+    if(/^<[^!?][^>]*[^\/]?>$/.test(node)) pad++;
+  });
+  return formatted.trim();
+}
+function drawUtilBars(canvas, series){
+  const ctx = canvas.getContext('2d'); const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const max = Math.max(1, ...series.map(s=>s.value));
+  const margin = 32, bw = Math.max(30, (W - margin*2) / Math.max(1,series.length) * 0.6);
+  let x = margin + ( (W - margin*2) - (series.length*bw + (series.length-1)*12) )/2;
+  ctx.strokeStyle = 'rgba(255,255,255,.25)';
+  ctx.beginPath(); ctx.moveTo(margin, H-margin); ctx.lineTo(W-margin, H-margin); ctx.stroke();
+  series.forEach(s=>{
+    const h = (H - margin*2) * (s.value/max);
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(x, H-margin-h, bw, h);
+    ctx.fillStyle = '#cbd5e1'; ctx.textAlign='center';
+    ctx.fillText(s.label, x + bw/2, H - margin + 14);
+    ctx.fillText(money(s.value), x + bw/2, H - margin - h - 6);
+    x += bw + 12;
+  });
+}
+function drawIncomeLines(canvas, incomeRows){
+  const ctx = canvas.getContext('2d'); const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const people = [...new Set(incomeRows.map(r=>r.person))];
+  const yms = [...new Set(incomeRows.map(r=>r.ym))].sort(ymSort);
+  const map = {}; people.forEach(p=>{ map[p] = {}; });
+  incomeRows.forEach(r=>{ map[r.person][r.ym] = (map[r.person][r.ym]||0) + Number(r.amount||0); });
+  const values = people.flatMap(p => yms.map(m => map[p][m]||0));
+  const max = Math.max(1, ...values);
+  const margin = 36; const sx = (W - margin*2) / Math.max(1,yms.length-1); const sy = (H - margin*2) / max;
+  ctx.strokeStyle = 'rgba(255,255,255,.25)';
+  ctx.beginPath(); ctx.moveTo(margin, H-margin); ctx.lineTo(W-margin, H-margin); ctx.stroke();
+  ctx.fillStyle = '#cbd5e1'; ctx.textAlign='center';
+  yms.forEach((m,i)=> ctx.fillText(m, margin + i*sx, H-margin + 14));
+  const colors = ['#22c55e','#60a5fa','#f59e0b','#e879f9'];
+  people.forEach((p,pi)=>{
+    ctx.beginPath(); ctx.strokeStyle = colors[pi % colors.length];
+    yms.forEach((m,i)=>{ const y = H - margin - (map[p][m]||0) * sy; const x = margin + i*sx; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+    ctx.stroke();
+    ctx.fillStyle = colors[pi % colors.length]; ctx.fillRect(W - margin - 120, margin + pi*18 - 10, 10, 10);
+    ctx.fillStyle = '#cbd5e1'; ctx.textAlign='left'; ctx.fillText(p, W - margin - 105, margin + pi*18);
+  });
+}
+document.getElementById("btnLoad").onclick = async ()=>{
+  const file = document.getElementById("fileInput").files?.[0];
+  if(!file){ alert("Choose an XML file first"); return; }
+  const raw = await file.text();
+  try{ state = stateFromXmlText(raw); document.getElementById("status").textContent = "XML loaded ✔"; render(); }
+  catch(e){ document.getElementById("status").textContent = "XML load failed"; alert("Invalid XML:\n" + e.message); document.getElementById("xmlPreview").textContent = raw; }
+};
+document.getElementById("btnDownload").onclick = ()=>{
+  const xml = xmlFromState(); const blob = new Blob([prettyXml(xml)], {type:"application/xml"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "finance-data.xml"; a.click(); URL.revokeObjectURL(a.href);
+  document.getElementById("status").textContent = "XML downloaded";
+};
+document.getElementById("btnSample").onclick = ()=>{
+  const sample = `<?xml version="1.0" encoding="UTF-8"?>
+<FinanceData version="1.1">
+  <Bills>
+    <Bill id="u1" name="Utility-Electricity-Xcel Energy" amount="486.43" currency="USD" frequency="monthly" dueDay="18" category="utility"/>
+    <Bill id="u2" name="Utility-Freedom Mortgage" amount="2081" currency="USD" frequency="monthly" dueDay="1" category="utility"/>
+    <Bill id="u3" name="Utility-Gas-Minnesota Energy Resources" amount="24.6" currency="USD" frequency="monthly" dueDay="18" category="utility"/>
+    <Bill id="u4" name="Utility-Internet-Spectrum" amount="85" currency="USD" frequency="monthly" category="utility"/>
+    <Bill id="u5" name="Utility-Trash-Dicks Sanitation" amount="53.56" currency="USD" frequency="monthly" category="utility"/>
+    <Bill id="u6" name="Utility-Water-Lakeville" amount="106.83" currency="USD" frequency="monthly" category="utility"/>
+  </Bills>
+  <Accounts>
+    <Account id="a1" name="Affinity Plus Credit Union" type="credit" currency="USD"><Balance date="2025-08-20">0</Balance></Account>
+    <Account id="a2" name="Chase" type="credit" currency="USD"><Balance date="2025-08-20">0</Balance></Account>
+    <Account id="a3" name="Discover" type="credit" currency="USD"><Balance date="2025-08-20">4000</Balance></Account>
+    <Account id="a4" name="US Bank Visa" type="credit" currency="USD" status="closed"><Balance date="2025-08-20">0</Balance></Account>
+    <Account id="a5" name="Citi - Simplicity" type="credit" currency="USD"><Balance date="2025-08-20">6000</Balance></Account>
+    <Account id="a6" name="Trustone" type="credit" currency="USD"><Balance date="2025-08-20">3000</Balance></Account>
+  </Accounts>
+  <Loans>
+    <Loan id="mort" name="Mortgage" currency="USD"><PrincipalLeft date="2025-08-01">283847</PrincipalLeft></Loan>
+  </Loans>
+  <IncomesMonthly>
+    <IncomeMonth person="Alex" ym="2025-01" amount="8528.03" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-02" amount="4725.11" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-03" amount="4926.83" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-04" amount="8208.47" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-05" amount="5385.95" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-06" amount="10227.19" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-07" amount="7213.16" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-01" amount="3914.54" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-02" amount="5364.58" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-03" amount="5439.28" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-04" amount="4696.68" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-05" amount="4473.86" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-06" amount="4618.59" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-07" amount="4551.48" currency="USD"/>
+  </IncomesMonthly>
+  <Transactions/>
+</FinanceData>`;
+  try{ state = stateFromXmlText(sample); document.getElementById("status").textContent = "Loaded sample data (from PDF)"; render(); }
+  catch(e){ alert("Sample load failed: "+e.message); }
+};
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FinanceData version="1.1">
+  <Bills>
+    <Bill id="u1" name="Utility-Electricity-Xcel Energy" amount="486.43" currency="USD" frequency="monthly" dueDay="18" category="utility"/>
+    <Bill id="u2" name="Utility-Freedom Mortgage" amount="2081" currency="USD" frequency="monthly" dueDay="1" category="utility"/>
+    <Bill id="u3" name="Utility-Gas-Minnesota Energy Resources" amount="24.6" currency="USD" frequency="monthly" dueDay="18" category="utility"/>
+    <Bill id="u4" name="Utility-Internet-Spectrum" amount="85" currency="USD" frequency="monthly" category="utility"/>
+    <Bill id="u5" name="Utility-Trash-Dicks Sanitation" amount="53.56" currency="USD" frequency="monthly" category="utility"/>
+    <Bill id="u6" name="Utility-Water-Lakeville" amount="106.83" currency="USD" frequency="monthly" category="utility"/>
+  </Bills>
+  <Accounts>
+    <Account id="a1" name="Affinity Plus Credit Union" type="credit" currency="USD"><Balance date="2025-08-20">0</Balance></Account>
+    <Account id="a2" name="Chase" type="credit" currency="USD"><Balance date="2025-08-20">0</Balance></Account>
+    <Account id="a3" name="Discover" type="credit" currency="USD"><Balance date="2025-08-20">4000</Balance></Account>
+    <Account id="a4" name="US Bank Visa" type="credit" currency="USD" status="closed"><Balance date="2025-08-20">0</Balance></Account>
+    <Account id="a5" name="Citi - Simplicity" type="credit" currency="USD"><Balance date="2025-08-20">6000</Balance></Account>
+    <Account id="a6" name="Trustone" type="credit" currency="USD"><Balance date="2025-08-20">3000</Balance></Account>
+  </Accounts>
+  <Loans>
+    <Loan id="mort" name="Mortgage" currency="USD"><PrincipalLeft date="2025-08-01">283847</PrincipalLeft></Loan>
+  </Loans>
+  <IncomesMonthly>
+    <IncomeMonth person="Alex" ym="2025-01" amount="8528.03" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-02" amount="4725.11" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-03" amount="4926.83" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-04" amount="8208.47" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-05" amount="5385.95" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-06" amount="10227.19" currency="USD"/>
+    <IncomeMonth person="Alex" ym="2025-07" amount="7213.16" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-01" amount="3914.54" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-02" amount="5364.58" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-03" amount="5439.28" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-04" amount="4696.68" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-05" amount="4473.86" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-06" amount="4618.59" currency="USD"/>
+    <IncomeMonth person="Cara" ym="2025-07" amount="4551.48" currency="USD"/>
+  </IncomesMonthly>
+  <Transactions/>
+</FinanceData>
