@@ -311,47 +311,170 @@ function prettyXml(xml){
   });
   return formatted.trim();
 }
-function drawUtilBars(canvas, series){
-  const ctx = canvas.getContext('2d'); const W=canvas.width, H=canvas.height;
-  ctx.clearRect(0,0,W,H);
-  const max = Math.max(1, ...series.map(s=>s.value));
-  const margin = 32, bw = Math.max(30, (W - margin*2) / Math.max(1,series.length) * 0.6);
-  let x = margin + ( (W - margin*2) - (series.length*bw + (series.length-1)*12) )/2;
+// Make a canvas crisp on HiDPI and match its CSS size
+function setupCanvas(canvas) {
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, Math.floor(rect.width  * dpr));
+  const height= Math.max(1, Math.floor(rect.height * dpr));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // logical 1px = 1 CSS pixel
+  return { ctx, W: rect.width, H: rect.height };
+}
+
+// Debounced redraw on resize so charts stay sharp/responsive
+let _resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => render(), 120);
+});
+
+function drawUtilBars(canvas, rawSeries, { excludeMortgage = false } = {}) {
+  const series = excludeMortgage
+    ? rawSeries.filter(s => !/mortgage/i.test(s.label))
+    : rawSeries.slice();
+
+  const { ctx, W, H } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, W, H);
+
+  const margin = { top: 24, right: 16, bottom: 56, left: 56 };
+  const plotW = Math.max(1, W - margin.left - margin.right);
+  const plotH = Math.max(1, H - margin.top - margin.bottom);
+  const max = Math.max(1, ...series.map(s => s.value));
+
+  // axes
   ctx.strokeStyle = 'rgba(255,255,255,.25)';
-  ctx.beginPath(); ctx.moveTo(margin, H-margin); ctx.lineTo(W-margin, H-margin); ctx.stroke();
-  series.forEach(s=>{
-    const h = (H - margin*2) * (s.value/max);
+  ctx.beginPath();
+  ctx.moveTo(margin.left, H - margin.bottom);
+  ctx.lineTo(W - margin.right, H - margin.bottom);
+  ctx.moveTo(margin.left, H - margin.bottom);
+  ctx.lineTo(margin.left, margin.top);
+  ctx.stroke();
+
+  // y grid & ticks
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.font = '12px system-ui';
+  const ticks = 5;
+  for (let i = 0; i <= ticks; i++) {
+    const v = (max / ticks) * i;
+    const y = H - margin.bottom - (v / max) * plotH;
+    ctx.strokeStyle = 'rgba(255,255,255,.12)';
+    ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(W - margin.right, y); ctx.stroke();
+    ctx.fillText(`$${v.toLocaleString(undefined,{maximumFractionDigits:0})}`, margin.left - 6, y);
+  }
+
+  // bars
+  const gap = 14;
+  const bw = Math.min(80, Math.max(26, (plotW - gap * (series.length - 1)) / series.length));
+  let x = margin.left + (plotW - (series.length * bw + (series.length - 1) * gap)) / 2;
+
+  series.forEach((s) => {
+    const h = (s.value / max) * plotH;
+    const y = H - margin.bottom - h;
+
+    // bar
     ctx.fillStyle = '#ef4444';
-    ctx.fillRect(x, H-margin-h, bw, h);
-    ctx.fillStyle = '#cbd5e1'; ctx.textAlign='center';
-    ctx.fillText(s.label, x + bw/2, H - margin + 14);
-    ctx.fillText(money(s.value), x + bw/2, H - margin - h - 6);
-    x += bw + 12;
+    ctx.fillRect(x, y, bw, h);
+
+    // value label
+    ctx.fillStyle = '#cbd5e1';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`$${s.value.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+                 x + bw / 2, y - 6);
+
+    // x label (angled)
+    ctx.save();
+    ctx.translate(x + bw / 2, H - margin.bottom + 6);
+    ctx.rotate(-Math.PI / 6); // ~ -30°
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = '11px system-ui';
+    ctx.fillText(s.label, 0, 0);
+    ctx.restore();
+
+    x += bw + gap;
   });
 }
+  
 function drawIncomeLines(canvas, incomeRows){
-  const ctx = canvas.getContext('2d'); const W=canvas.width, H=canvas.height;
+  const { ctx, W, H } = setupCanvas(canvas);
   ctx.clearRect(0,0,W,H);
+
+  const margin = { top: 24, right: 140, bottom: 42, left: 56 };
+  const plotW = Math.max(1, W - margin.left - margin.right);
+  const plotH = Math.max(1, H - margin.top - margin.bottom);
+
   const people = [...new Set(incomeRows.map(r=>r.person))];
-  const yms = [...new Set(incomeRows.map(r=>r.ym))].sort(ymSort);
-  const map = {}; people.forEach(p=>{ map[p] = {}; });
-  incomeRows.forEach(r=>{ map[r.person][r.ym] = (map[r.person][r.ym]||0) + Number(r.amount||0); });
+  const yms = [...new Set(incomeRows.map(r=>r.ym))].sort((a,b)=> a.localeCompare(b));
+  const map = {}; people.forEach(p=> map[p] = {});
+  incomeRows.forEach(r=> map[r.person][r.ym] = (map[r.person][r.ym]||0) + Number(r.amount||0));
+
   const values = people.flatMap(p => yms.map(m => map[p][m]||0));
   const max = Math.max(1, ...values);
-  const margin = 36; const sx = (W - margin*2) / Math.max(1,yms.length-1); const sy = (H - margin*2) / max;
+
+  // axes
   ctx.strokeStyle = 'rgba(255,255,255,.25)';
-  ctx.beginPath(); ctx.moveTo(margin, H-margin); ctx.lineTo(W-margin, H-margin); ctx.stroke();
-  ctx.fillStyle = '#cbd5e1'; ctx.textAlign='center';
-  yms.forEach((m,i)=> ctx.fillText(m, margin + i*sx, H-margin + 14));
-  const colors = ['#22c55e','#60a5fa','#f59e0b','#e879f9'];
+  ctx.beginPath();
+  ctx.moveTo(margin.left, H - margin.bottom);
+  ctx.lineTo(W - margin.right, H - margin.bottom);
+  ctx.moveTo(margin.left, H - margin.bottom);
+  ctx.lineTo(margin.left, margin.top);
+  ctx.stroke();
+
+  // y grid & ticks
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.font = '12px system-ui';
+  const ticks = 5;
+  for (let i = 0; i <= ticks; i++) {
+    const v = (max / ticks) * i;
+    const y = H - margin.bottom - (v / max) * plotH;
+    ctx.strokeStyle = 'rgba(255,255,255,.12)';
+    ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(W - margin.right, y); ctx.stroke();
+    ctx.fillText(`$${v.toLocaleString(undefined,{maximumFractionDigits:0})}`, margin.left - 6, y);
+  }
+
+  // x labels
+  const sx = yms.length > 1 ? plotW / (yms.length - 1) : 0;
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = '12px system-ui';
+  yms.forEach((m,i)=> ctx.fillText(m, margin.left + i*sx, H - margin.bottom + 8));
+
+  // series
+  const colors = ['#22c55e','#60a5fa','#f59e0b','#e879f9','#f472b6','#a78bfa'];
   people.forEach((p,pi)=>{
-    ctx.beginPath(); ctx.strokeStyle = colors[pi % colors.length];
-    yms.forEach((m,i)=>{ const y = H - margin - (map[p][m]||0) * sy; const x = margin + i*sx; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+    ctx.beginPath();
+    ctx.strokeStyle = colors[pi % colors.length];
+    ctx.lineWidth = 2;
+    yms.forEach((m,i)=>{
+      const v = map[p][m]||0;
+      const x = margin.left + i*sx;
+      const y = H - margin.bottom - (v / max) * plotH;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
     ctx.stroke();
-    ctx.fillStyle = colors[pi % colors.length]; ctx.fillRect(W - margin - 120, margin + pi*18 - 10, 10, 10);
-    ctx.fillStyle = '#cbd5e1'; ctx.textAlign='left'; ctx.fillText(p, W - margin - 105, margin + pi*18);
+
+    // legend
+    ctx.fillStyle = colors[pi % colors.length];
+    ctx.fillRect(W - margin.right + 12, margin.top + pi*18 - 8, 10, 10);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p, W - margin.right + 28, margin.top + pi*18 - 3);
   });
 }
+
+
 
 /* ---------- Buttons ---------- */
 document.getElementById("btnLoad").onclick = async ()=>{
