@@ -105,6 +105,28 @@
 </main>
 
 <script>
+/* ---- Persist the last XML in localStorage ---- */
+const STORAGE_XML_KEY = "financeXML";
+const STORAGE_XML_TS  = "financeXML_TS";
+
+function saveXmlToStorage(xmlText){
+  try {
+    localStorage.setItem(STORAGE_XML_KEY, xmlText);
+    localStorage.setItem(STORAGE_XML_TS, new Date().toISOString());
+  } catch (e) { /* storage may be full or blocked */ }
+}
+
+function loadXmlFromStorage(){
+  const xml = localStorage.getItem(STORAGE_XML_KEY);
+  const ts  = localStorage.getItem(STORAGE_XML_TS);
+  return xml ? { xml, ts } : null;
+}
+
+function clearStoredXml(){
+  localStorage.removeItem(STORAGE_XML_KEY);
+  localStorage.removeItem(STORAGE_XML_TS);
+}
+  
 let state = { accounts: [], bills: [], incomesMonthly: [], loans: [] };
 const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
