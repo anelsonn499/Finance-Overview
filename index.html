@@ -128,73 +128,59 @@
    =========================== */
 const STORAGE_XML_KEY = "financeXML";
 const STORAGE_XML_TS  = "financeXML_TS";
-
 function saveXmlToStorage(xmlText){
-  try {
-    localStorage.setItem(STORAGE_XML_KEY, xmlText);
-    localStorage.setItem(STORAGE_XML_TS, new Date().toISOString());
-  } catch (e) {}
+  try { localStorage.setItem(STORAGE_XML_KEY, xmlText);
+        localStorage.setItem(STORAGE_XML_TS, new Date().toISOString()); } catch (e) {}
 }
 function loadXmlFromStorage(){
   const xml = localStorage.getItem(STORAGE_XML_KEY);
   const ts  = localStorage.getItem(STORAGE_XML_TS);
   return xml ? { xml, ts } : null;
 }
-function clearStoredXml(){
-  localStorage.removeItem(STORAGE_XML_KEY);
-  localStorage.removeItem(STORAGE_XML_TS);
-}
+function clearStoredXml(){ localStorage.removeItem(STORAGE_XML_KEY); localStorage.removeItem(STORAGE_XML_TS); }
 
 /* ===========================
    Password gate (client-side)
    =========================== */
 const AUTH_FLAG = "auth_ok_v1";
-/* ▼▼ Paste your SHA-256 hex here. To generate: open Console and run:
-      await hash('your-strong-password') */
-const PASSWORD_HASH = "98e9f0a342b01d5562821b654e5f5d9783992905b7fc2f37f040300f6cc8c217";  // empty disables the lock (no password required)
+
+/*  Set this to your SHA-256 hex.
+    To generate: open DevTools Console on any page and run:
+       await (async s=>{ const b=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+                         return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); })('your-password')
+*/
+const PASSWORD_HASH = "PUT_YOUR_SHA256_HEX_HERE";  // <-- must NOT be empty to require a password
 
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,"0")).join("");
 }
-window.hash = sha256Hex; // helper
-
 async function tryUnlock(pw){
-  if (!PASSWORD_HASH) { // no password configured
-    document.getElementById("lock").style.display = "none";
-    return true;
-  }
-  const hash = await sha256Hex(pw || "");
-  if (hash === PASSWORD_HASH) {
+  if (!PASSWORD_HASH) { document.getElementById("lock").style.display = "none"; return true; }
+  const ok = (await sha256Hex(pw||"")) === PASSWORD_HASH;
+  if (ok) {
     localStorage.setItem(AUTH_FLAG, "1");
     document.getElementById("lock").style.display = "none";
     document.getElementById("logout").style.display = "inline-block";
-    return true;
   }
-  return false;
+  return ok;
 }
 function checkAuth(){
-  if (!PASSWORD_HASH) {
-    document.getElementById("lock").style.display = "none";
-    return;
-  }
+  if (!PASSWORD_HASH) { document.getElementById("lock").style.display = "none"; return; }
   if (localStorage.getItem(AUTH_FLAG) === "1") {
     document.getElementById("lock").style.display = "none";
     document.getElementById("logout").style.display = "inline-block";
   }
 }
-document.getElementById("unlock").onclick = async () => {
+document.getElementById("unlock").onclick = async ()=>{
   const ok = await tryUnlock(document.getElementById("pw").value);
   document.getElementById("pwmsg").textContent = ok ? "" : "Wrong password";
 };
-document.getElementById("logout").onclick = () => {
-  localStorage.removeItem(AUTH_FLAG);
-  location.reload();
-};
+document.getElementById("logout").onclick = ()=>{ localStorage.removeItem(AUTH_FLAG); location.reload(); };
 checkAuth();
 
 /* ===========================
-   App logic (unchanged layout)
+   App logic (same as before)
    =========================== */
 let state = { accounts: [], bills: [], incomesMonthly: [], loans: [] };
 const $  = s => document.querySelector(s);
@@ -204,7 +190,6 @@ const statusEl = $("#status");
 const uid   = p => p + Math.random().toString(36).slice(2,8);
 const money = n => '$' + (isNaN(n)?'0.00':Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}));
 const ymSort = (a,b)=> a.localeCompare(b);
-const today = () => new Date().toISOString().slice(0,10);
 
 function sanitizeXmlInput(text){ if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); return text.replace(/\r\n?/g, '\n'); }
 function parseXmlOrThrow(text){
@@ -227,14 +212,9 @@ function stateFromXmlText(text){
   }));
   const accounts = Array.from(doc.querySelectorAll("Accounts > Account")).map(A=>{
     const balEl = A.querySelector("Balance");
-    return {
-      id: A.getAttribute("id") || uid("a"),
-      name: A.getAttribute("name") || "",
-      type: A.getAttribute("type") || "checking",
-      currency: A.getAttribute("currency") || "USD",
-      status: A.getAttribute("status") || "",
-      balance: balEl ? { value: Number(balEl.textContent||0), date: balEl.getAttribute("date")||"" } : {value:0,date:""}
-    };
+    return { id:A.getAttribute("id")||uid("a"), name:A.getAttribute("name")||"", type:A.getAttribute("type")||"checking",
+             currency:A.getAttribute("currency")||"USD", status:A.getAttribute("status")||"",
+             balance: balEl ? { value:Number(balEl.textContent||0), date:balEl.getAttribute("date")||"" } : {value:0,date:""} };
   });
   const loans = Array.from(doc.querySelectorAll("Loans > Loan")).map(L=>{
     const P = L.querySelector("PrincipalLeft");
@@ -242,16 +222,15 @@ function stateFromXmlText(text){
              principalLeft: P ? Number(P.textContent||0) : 0, date: P ? (P.getAttribute("date")||"") : "" };
   });
   const incomesMonthly = Array.from(doc.querySelectorAll("IncomesMonthly > IncomeMonth")).map(I=>({
-    person: I.getAttribute("person") || "",
-    ym: I.getAttribute("ym") || "",
-    amount: Number(I.getAttribute("amount") || 0),
-    currency: I.getAttribute("currency") || "USD"
+    person:I.getAttribute("person")||"", ym:I.getAttribute("ym")||"", amount:Number(I.getAttribute("amount")||0),
+    currency:I.getAttribute("currency")||"USD"
   }));
   return {accounts,bills,incomesMonthly,loans};
 }
 function xmlFromState(){
   const doc = document.implementation.createDocument("", "", null);
   const root = doc.createElement("FinanceData"); root.setAttribute("version","1.1"); doc.appendChild(root);
+
   const bRoot = doc.createElement("Bills");
   state.bills.forEach(b=>{ const B = doc.createElement("Bill");
     B.setAttribute("id", b.id); B.setAttribute("name", b.name); B.setAttribute("amount", String(b.amount ?? 0));
@@ -259,6 +238,7 @@ function xmlFromState(){
     if(b.dueDay) B.setAttribute("dueDay", String(b.dueDay)); if(b.category) B.setAttribute("category", b.category);
     bRoot.appendChild(B);
   }); root.appendChild(bRoot);
+
   const aRoot = doc.createElement("Accounts");
   state.accounts.forEach(a=>{ const A = doc.createElement("Account");
     A.setAttribute("id", a.id); A.setAttribute("name", a.name); A.setAttribute("type", a.type);
@@ -267,14 +247,17 @@ function xmlFromState(){
       B.textContent = String(a.balance.value ?? 0); A.appendChild(B); }
     aRoot.appendChild(A);
   }); root.appendChild(aRoot);
-  if(state.loans?.length){ const lRoot = doc.createElement("Loans");
+
+  if(state.loans?.length){
+    const lRoot = doc.createElement("Loans");
     state.loans.forEach(l=>{ const L = doc.createElement("Loan");
       L.setAttribute("id", l.id); L.setAttribute("name", l.name); L.setAttribute("currency", l.currency || "USD");
       const P = doc.createElement("PrincipalLeft"); if(l.date) P.setAttribute("date", l.date); P.textContent = String(l.principalLeft ?? 0);
       L.appendChild(P); lRoot.appendChild(L);
     }); root.appendChild(lRoot);
   }
-  if(state.incomesMonthly?.length){ const iRoot = doc.createElement("IncomesMonthly");
+  if(state.incomesMonthly?.length){
+    const iRoot = doc.createElement("IncomesMonthly");
     state.incomesMonthly.forEach(im=>{ const I = doc.createElement("IncomeMonth");
       I.setAttribute("person", im.person); I.setAttribute("ym", im.ym); I.setAttribute("amount", String(im.amount ?? 0));
       I.setAttribute("currency", im.currency || "USD"); iRoot.appendChild(I);
@@ -285,7 +268,8 @@ function xmlFromState(){
 function render(){
   const utilities = state.bills.filter(b => b.category==='utility' || /^utility-/i.test(b.name));
   const tbU = document.querySelector("#tblUtilities tbody"); tbU.innerHTML = "";
-  let sumU = 0; utilities.forEach(u=>{ sumU += (u.amount||0);
+  let sumU = 0; utilities.forEach(u=>{
+    sumU += (u.amount||0);
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${u.name}</td><td class="right">${money(u.amount||0)}</td><td class="center">${u.dueDay?u.dueDay:''}</td>`;
     tbU.appendChild(tr);
@@ -294,8 +278,10 @@ function render(){
 
   const credits = state.accounts.filter(a => (a.type||'').toLowerCase()==='credit');
   const tbR = document.querySelector("#tblRevolving tbody"); tbR.innerHTML = "";
-  let sumR = 0; credits.forEach(a=>{ const val = Math.abs(Number(a.balance?.value||0)); sumR += val;
-    const tr = document.createElement("tr"); tr.innerHTML = `<td>${a.name}</td><td class="right">${money(val)}</td><td class="center">${a.status||''}</td>`;
+  let sumR = 0; credits.forEach(a=>{
+    const val = Math.abs(Number(a.balance?.value||0)); sumR += val;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${a.name}</td><td class="right">${money(val)}</td><td class="center">${a.status||''}</td>`;
     tbR.appendChild(tr);
   });
   document.getElementById("sumRevolving").textContent = money(sumR);
@@ -305,7 +291,8 @@ function render(){
 
   const tbI = document.querySelector("#tblIncome tbody"); tbI.innerHTML = "";
   const ims = state.incomesMonthly.slice().sort((a,b)=> (a.person===b.person) ? ymSort(a.ym,b.ym) : a.person.localeCompare(b.person));
-  ims.forEach(im=>{ const tr = document.createElement("tr");
+  ims.forEach(im=>{
+    const tr = document.createElement("tr");
     tr.innerHTML = `<td>${im.person}</td><td class="right">${im.ym}</td><td class="right">${money(im.amount)}</td>`;
     tbI.appendChild(tr);
   });
@@ -373,19 +360,21 @@ document.getElementById("btnLoad").onclick = async ()=>{
   const raw = await file.text();
   try{
     state = stateFromXmlText(raw);
-    saveXmlToStorage(raw); // ✅ persist
-    document.getElementById("status").textContent = "XML loaded ✔ (saved " + new Date().toLocaleTimeString() + ")";
+    saveXmlToStorage(raw); // persist
+    statusEl.textContent = "XML loaded ✔ (saved)";
     render();
   } catch(e){
-    document.getElementById("status").textContent = "XML load failed";
+    statusEl.textContent = "XML load failed";
     alert("Invalid XML:\n" + e.message);
     document.getElementById("xmlPreview").textContent = raw;
   }
 };
 document.getElementById("btnDownload").onclick = ()=>{
-  const xml = xmlFromState(); const blob = new Blob([prettyXml(xml)], {type:"application/xml"});
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "finance-data.xml"; a.click(); URL.revokeObjectURL(a.href);
-  document.getElementById("status").textContent = "XML downloaded";
+  const xml = xmlFromState();
+  const blob = new Blob([prettyXml(xml)], {type:"application/xml"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "finance-data.xml"; a.click(); URL.revokeObjectURL(a.href);
+  statusEl.textContent = "XML downloaded";
 };
 document.getElementById("btnSample").onclick = ()=>{
   const sample = `<?xml version="1.0" encoding="UTF-8"?>
@@ -427,34 +416,21 @@ document.getElementById("btnSample").onclick = ()=>{
   </IncomesMonthly>
   <Transactions/>
 </FinanceData>`;
-  try{
-    state = stateFromXmlText(sample);
-    saveXmlToStorage(sample); // ✅ persist
-    document.getElementById("status").textContent = "Loaded sample data (saved)";
-    render();
-  } catch(e){ alert("Sample load failed: "+e.message); }
-};
-document.getElementById("btnClear").onclick = ()=>{
-  clearStoredXml();
-  statusEl.textContent = "Saved XML cleared";
+  try{ state = stateFromXmlText(sample); saveXmlToStorage(sample); statusEl.textContent = "Loaded sample (saved)"; render(); }
+  catch(e){ alert("Sample load failed: "+e.message); }
 };
 
-/* ---------- Startup: auto-restore last XML if available ---------- */
-(function restoreFromCache(){
+/* ---- Auto-restore previous XML, then draw ---- */
+(function restore(){
   const cached = loadXmlFromStorage();
   if (cached) {
-    try {
-      state = stateFromXmlText(cached.xml);
-      statusEl.textContent = "Loaded saved XML ✔ (" + new Date(cached.ts).toLocaleString() + ")";
-      render();
-    } catch (_) {
-      // ignore corrupt cache
-    }
-  } else {
-    // no cache yet; initial render keeps empty tables
-    render();
+    try { state = stateFromXmlText(cached.xml);
+          statusEl.textContent = "Loaded saved XML ✔ (" + new Date(cached.ts).toLocaleString() + ")"; }
+    catch(_) {}
   }
+  render();
 })();
 </script>
+
 </body>
 </html>
