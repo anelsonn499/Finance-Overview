@@ -151,7 +151,7 @@ function clearStoredXml(){
 const AUTH_FLAG = "auth_ok_v1";
 /* ▼▼ Paste your SHA-256 hex here. To generate: open Console and run:
       await hash('your-strong-password') */
-const PASSWORD_HASH = "";  // empty disables the lock (no password required)
+const PASSWORD_HASH = "98e9f0a342b01d5562821b654e5f5d9783992905b7fc2f37f040300f6cc8c217";  // empty disables the lock (no password required)
 
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
