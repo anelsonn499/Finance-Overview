@@ -20,8 +20,8 @@
   header{padding:16px 24px;border-bottom:1px solid var(--border);background:var(--panel);backdrop-filter: blur(6px)}
   h1{margin:0;font-size:22px}
   .pill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:2px 8px;margin-left:8px;color:#bcd7ff;font-size:12px}
-  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-  button,input{background:rgba(15,28,46,.7);border:1px solid var(--border);color:var(--ink);padding:8px 10px;border-radius:10px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px; align-items:center}
+  button,input{background:rgba(15,28,46,.7);border:1px solid var(--border);color:var(--ink);padding:8px 10px;border-radius:10px;cursor:pointer}
   button.accent{background:#062413;border-color:#1f5737;color:#c4f5d5}
   .muted{color:var(--muted)} .small{font-size:12px} .center{text-align:center} .right{text-align:right}
   .section-title{text-align:center;text-decoration:underline;margin:0 0 10px 0}
@@ -40,6 +40,23 @@
 </style>
 </head>
 <body>
+
+<!-- 🔐 Password overlay (client-side gate) -->
+<div id="lock" style="
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.85); z-index:9999; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif; color:#e5e7eb;">
+  <div style="background:rgba(10,18,30,.9); border:1px solid rgba(255,255,255,.15); border-radius:14px; padding:22px; width:min(420px,90vw);">
+    <h2 style="margin:0 0 12px 0; text-align:center;">Enter password</h2>
+    <input id="pw" type="password" placeholder="Password" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:#0b1220; color:#e5e7eb;">
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button id="unlock" class="accent" style="flex:1;">Unlock</button>
+      <button id="logout" style="display:none;">Logout</button>
+    </div>
+    <p id="pwmsg" style="margin:8px 0 0; color:#fca5a5; min-height:1.4em;"></p>
+    <p class="small muted" style="margin-top:8px">Tip: to set a new password hash, open DevTools Console and run <code>await hash('your-password')</code>, then paste the result into <code>PASSWORD_HASH</code> in the HTML.</p>
+  </div>
+</div>
+
 <header>
   <h1>Nelson Finances <span class="pill">Local · XML</span></h1>
   <div class="toolbar">
@@ -47,7 +64,8 @@
     <button id="btnLoad">Load XML</button>
     <button id="btnSample">Load PDF-based Sample</button>
     <button id="btnDownload" class="accent">Download Current XML</button>
-    <span class="muted" id="status"></span>
+    <button id="btnClear">Clear Saved</button>
+    <span class="muted small" id="status"></span>
   </div>
 </header>
 
@@ -105,7 +123,9 @@
 </main>
 
 <script>
-/* ---- Persist the last XML in localStorage ---- */
+/* ===========================
+   Persistence: last imported XML
+   =========================== */
 const STORAGE_XML_KEY = "financeXML";
 const STORAGE_XML_TS  = "financeXML_TS";
 
@@ -113,20 +133,69 @@ function saveXmlToStorage(xmlText){
   try {
     localStorage.setItem(STORAGE_XML_KEY, xmlText);
     localStorage.setItem(STORAGE_XML_TS, new Date().toISOString());
-  } catch (e) { /* storage may be full or blocked */ }
+  } catch (e) {}
 }
-
 function loadXmlFromStorage(){
   const xml = localStorage.getItem(STORAGE_XML_KEY);
   const ts  = localStorage.getItem(STORAGE_XML_TS);
   return xml ? { xml, ts } : null;
 }
-
 function clearStoredXml(){
   localStorage.removeItem(STORAGE_XML_KEY);
   localStorage.removeItem(STORAGE_XML_TS);
 }
-  
+
+/* ===========================
+   Password gate (client-side)
+   =========================== */
+const AUTH_FLAG = "auth_ok_v1";
+/* ▼▼ Paste your SHA-256 hex here. To generate: open Console and run:
+      await hash('your-strong-password') */
+const PASSWORD_HASH = "";  // empty disables the lock (no password required)
+
+async function sha256Hex(str){
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,"0")).join("");
+}
+window.hash = sha256Hex; // helper
+
+async function tryUnlock(pw){
+  if (!PASSWORD_HASH) { // no password configured
+    document.getElementById("lock").style.display = "none";
+    return true;
+  }
+  const hash = await sha256Hex(pw || "");
+  if (hash === PASSWORD_HASH) {
+    localStorage.setItem(AUTH_FLAG, "1");
+    document.getElementById("lock").style.display = "none";
+    document.getElementById("logout").style.display = "inline-block";
+    return true;
+  }
+  return false;
+}
+function checkAuth(){
+  if (!PASSWORD_HASH) {
+    document.getElementById("lock").style.display = "none";
+    return;
+  }
+  if (localStorage.getItem(AUTH_FLAG) === "1") {
+    document.getElementById("lock").style.display = "none";
+    document.getElementById("logout").style.display = "inline-block";
+  }
+}
+document.getElementById("unlock").onclick = async () => {
+  const ok = await tryUnlock(document.getElementById("pw").value);
+  document.getElementById("pwmsg").textContent = ok ? "" : "Wrong password";
+};
+document.getElementById("logout").onclick = () => {
+  localStorage.removeItem(AUTH_FLAG);
+  location.reload();
+};
+checkAuth();
+
+/* ===========================
+   App logic (unchanged layout)
+   =========================== */
 let state = { accounts: [], bills: [], incomesMonthly: [], loans: [] };
 const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
@@ -296,12 +365,22 @@ function drawIncomeLines(canvas, incomeRows){
     ctx.fillStyle = '#cbd5e1'; ctx.textAlign='left'; ctx.fillText(p, W - margin - 105, margin + pi*18);
   });
 }
+
+/* ---------- Buttons ---------- */
 document.getElementById("btnLoad").onclick = async ()=>{
   const file = document.getElementById("fileInput").files?.[0];
   if(!file){ alert("Choose an XML file first"); return; }
   const raw = await file.text();
-  try{ state = stateFromXmlText(raw); document.getElementById("status").textContent = "XML loaded ✔"; render(); }
-  catch(e){ document.getElementById("status").textContent = "XML load failed"; alert("Invalid XML:\n" + e.message); document.getElementById("xmlPreview").textContent = raw; }
+  try{
+    state = stateFromXmlText(raw);
+    saveXmlToStorage(raw); // ✅ persist
+    document.getElementById("status").textContent = "XML loaded ✔ (saved " + new Date().toLocaleTimeString() + ")";
+    render();
+  } catch(e){
+    document.getElementById("status").textContent = "XML load failed";
+    alert("Invalid XML:\n" + e.message);
+    document.getElementById("xmlPreview").textContent = raw;
+  }
 };
 document.getElementById("btnDownload").onclick = ()=>{
   const xml = xmlFromState(); const blob = new Blob([prettyXml(xml)], {type:"application/xml"});
@@ -348,10 +427,34 @@ document.getElementById("btnSample").onclick = ()=>{
   </IncomesMonthly>
   <Transactions/>
 </FinanceData>`;
-  try{ state = stateFromXmlText(sample); document.getElementById("status").textContent = "Loaded sample data (from PDF)"; render(); }
-  catch(e){ alert("Sample load failed: "+e.message); }
+  try{
+    state = stateFromXmlText(sample);
+    saveXmlToStorage(sample); // ✅ persist
+    document.getElementById("status").textContent = "Loaded sample data (saved)";
+    render();
+  } catch(e){ alert("Sample load failed: "+e.message); }
 };
-render();
+document.getElementById("btnClear").onclick = ()=>{
+  clearStoredXml();
+  statusEl.textContent = "Saved XML cleared";
+};
+
+/* ---------- Startup: auto-restore last XML if available ---------- */
+(function restoreFromCache(){
+  const cached = loadXmlFromStorage();
+  if (cached) {
+    try {
+      state = stateFromXmlText(cached.xml);
+      statusEl.textContent = "Loaded saved XML ✔ (" + new Date(cached.ts).toLocaleString() + ")";
+      render();
+    } catch (_) {
+      // ignore corrupt cache
+    }
+  } else {
+    // no cache yet; initial render keeps empty tables
+    render();
+  }
+})();
 </script>
 </body>
 </html>
