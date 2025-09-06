@@ -26,17 +26,21 @@
   .muted{color:var(--muted)} .small{font-size:12px} .center{text-align:center} .right{text-align:right}
   .section-title{text-align:center;text-decoration:underline;margin:0 0 10px 0}
 
+  /* layout cards/tables/charts */
   main{display:grid;gap:16px;grid-template-columns:1fr 1fr;padding:16px}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px 16px;backdrop-filter: blur(6px)}
   .card.wide{grid-column:1 / -1}
-
   table{width:100%;border-collapse:collapse;font-size:14px}
   th,td{border-bottom:1px solid var(--border);padding:8px}
   th{color:#bcd7ff;font-weight:600}
   .tot{font-weight:700}
   .xmlbox{white-space:pre-wrap;max-height:280px;overflow:auto;background:rgba(0,0,0,.35);border:1px dashed var(--border);border-radius:12px;padding:10px}
-
   canvas{width:100%;height:280px;background:rgba(255,255,255,0.03);border:1px dashed var(--border);border-radius:12px}
+
+  /* tabs */
+  .tabs{display:flex;gap:8px;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .tab{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:rgba(15,28,46,.7);color:var(--ink);cursor:pointer}
+  .tab.active{outline:2px solid var(--accent); outline-offset:1px}
 </style>
 </head>
 <body>
@@ -69,58 +73,96 @@
   </div>
 </header>
 
-<main>
-  <section class="card" id="secUtilities">
-    <h2 class="section-title">Utilities</h2>
-    <table id="tblUtilities">
-      <thead>
-        <tr><th>Name</th><th class="right">Monthly Amount</th><th class="center">Due Day</th></tr>
-      </thead>
-      <tbody></tbody>
-      <tfoot>
-        <tr><td class="tot">Sum of utility bills (per month)</td><td id="sumUtilities" class="right tot">$0.00</td><td></td></tr>
-      </tfoot>
-    </table>
-    <div style="height:12px"></div>
-    <canvas id="utilChart" aria-label="Utilities bar chart"></canvas>
-  </section>
+<!-- Tabs -->
+<nav class="tabs">
+  <button class="tab active" data-tab="dashboard">Dashboard</button>
+  <button class="tab" data-tab="tx">Transactions</button>
+</nav>
 
-  <section class="card" id="secRevolving">
-    <h2 class="section-title">Revolving Balances</h2>
-    <table id="tblRevolving">
-      <thead>
-        <tr><th>Name</th><th class="right">Balance</th><th class="center">Status</th></tr>
-      </thead>
-      <tbody></tbody>
-      <tfoot>
-        <tr><td class="tot">Total revolving balance</td><td id="sumRevolving" class="right tot">$0.00</td><td></td></tr>
-      </tfoot>
-    </table>
-    <div style="height:12px"></div>
-    <div id="mortgageCard" class="card" style="padding:10px">
-      <strong>Mortgage — Total Left:</strong> <span id="mortgageLeft">$0.00</span>
+<!-- DASHBOARD TAB -->
+<div id="tab-dashboard">
+  <main>
+    <section class="card" id="secUtilities">
+      <h2 class="section-title">Utilities</h2>
+      <table id="tblUtilities">
+        <thead>
+          <tr><th>Name</th><th class="right">Monthly Amount</th><th class="center">Due Day</th></tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr><td class="tot">Sum of utility bills (per month)</td><td id="sumUtilities" class="right tot">$0.00</td><td></td></tr>
+        </tfoot>
+      </table>
+      <div style="height:12px"></div>
+      <canvas id="utilChart" aria-label="Utilities bar chart"></canvas>
+    </section>
+
+    <section class="card" id="secRevolving">
+      <h2 class="section-title">Revolving Balances</h2>
+      <table id="tblRevolving">
+        <thead>
+          <tr><th>Name</th><th class="right">Balance</th><th class="center">Status</th></tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr><td class="tot">Total revolving balance</td><td id="sumRevolving" class="right tot">$0.00</td><td></td></tr>
+        </tfoot>
+      </table>
+      <div style="height:12px"></div>
+      <div id="mortgageCard" class="card" style="padding:10px">
+        <strong>Mortgage — Total Left:</strong> <span id="mortgageLeft">$0.00</span>
+      </div>
+    </section>
+
+    <section class="card wide" id="secIncome">
+      <h2 class="section-title">Monthly Income</h2>
+      <table id="tblIncome">
+        <thead>
+          <tr><th>Person</th><th class="right">Month</th><th class="right">Amount</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div style="height:12px"></div>
+      <canvas id="incomeChart" aria-label="Income by month"></canvas>
+    </section>
+
+    <section class="card wide" id="secXml">
+      <details open>
+        <summary>Current XML snapshot</summary>
+        <pre id="xmlPreview" class="xmlbox"></pre>
+      </details>
+    </section>
+  </main>
+</div>
+
+<!-- TRANSACTIONS TAB -->
+<div id="tab-tx" style="display:none;padding:16px">
+  <section class="card wide">
+    <h2 class="section-title">Recent Transactions &gt;= Threshold</h2>
+
+    <div class="toolbar" style="margin:0 0 12px 0">
+      <input type="file" id="csvInput" accept=".csv" />
+      <button id="btnLoadCsv">Load CSV</button>
+      <label class="muted small">Threshold: $
+        <input id="txThreshold" type="number" value="500" min="0" step="1" style="width:90px;margin-left:6px">
+      </label>
+      <button id="btnSaveCsv" class="accent">Remember CSV</button>
+      <button id="btnClearCsv">Clear Saved CSV</button>
+      <span class="muted small" id="txStatus"></span>
     </div>
-  </section>
 
-  <section class="card wide" id="secIncome">
-    <h2 class="section-title">Monthly Income</h2>
-    <table id="tblIncome">
+    <table id="tblTx">
       <thead>
-        <tr><th>Person</th><th class="right">Month</th><th class="right">Amount</th></tr>
+        <tr>
+          <th>Date</th>
+          <th>Description</th>
+          <th class="right">Amount</th>
+        </tr>
       </thead>
       <tbody></tbody>
     </table>
-    <div style="height:12px"></div>
-    <canvas id="incomeChart" aria-label="Income by month"></canvas>
   </section>
-
-  <section class="card wide" id="secXml">
-    <details open>
-      <summary>Current XML snapshot</summary>
-      <pre id="xmlPreview" class="xmlbox"></pre>
-    </details>
-  </section>
-</main>
+</div>
 
 <script>
 /* ===========================
@@ -143,13 +185,8 @@ function clearStoredXml(){ localStorage.removeItem(STORAGE_XML_KEY); localStorag
    Password gate (client-side)
    =========================== */
 const AUTH_FLAG = "auth_ok_v1";
-
-/*  Set this to your SHA-256 hex.
-    To generate: open DevTools Console on any page and run:
-       await (async s=>{ const b=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-                         return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); })('your-password')
-*/
-const PASSWORD_HASH = "98e9f0a342b01d5562821b654e5f5d9783992905b7fc2f37f040300f6cc8c217";  // <-- must NOT be empty to require a password
+/* (already your hash) */
+const PASSWORD_HASH = "98e9f0a342b01d5562821b654e5f5d9783992905b7fc2f37f040300f6cc8c217";
 
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
@@ -265,6 +302,8 @@ function xmlFromState(){
   }
   return new XMLSerializer().serializeToString(doc);
 }
+
+/* ---------- Rendering (Dashboard) ---------- */
 function render(){
   const utilities = state.bills.filter(b => b.category==='utility' || /^utility-/i.test(b.name));
   const tbU = document.querySelector("#tblUtilities tbody"); tbU.innerHTML = "";
@@ -311,7 +350,8 @@ function prettyXml(xml){
   });
   return formatted.trim();
 }
-// Make a canvas crisp on HiDPI and match its CSS size
+
+/* ---------- HiDPI canvas helpers + charts ---------- */
 function setupCanvas(canvas) {
   const dpr = Math.max(1, window.devicePixelRatio || 1);
   const rect = canvas.getBoundingClientRect();
@@ -322,31 +362,22 @@ function setupCanvas(canvas) {
     canvas.height = height;
   }
   const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // logical 1px = 1 CSS pixel
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return { ctx, W: rect.width, H: rect.height };
 }
-
-// Debounced redraw on resize so charts stay sharp/responsive
 let _resizeTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => render(), 120);
 });
-
 function drawUtilBars(canvas, rawSeries, { excludeMortgage = false } = {}) {
-  const series = excludeMortgage
-    ? rawSeries.filter(s => !/mortgage/i.test(s.label))
-    : rawSeries.slice();
-
+  const series = excludeMortgage ? rawSeries.filter(s => !/mortgage/i.test(s.label)) : rawSeries.slice();
   const { ctx, W, H } = setupCanvas(canvas);
   ctx.clearRect(0, 0, W, H);
-
   const margin = { top: 24, right: 16, bottom: 56, left: 56 };
   const plotW = Math.max(1, W - margin.left - margin.right);
   const plotH = Math.max(1, H - margin.top - margin.bottom);
   const max = Math.max(1, ...series.map(s => s.value));
-
-  // axes
   ctx.strokeStyle = 'rgba(255,255,255,.25)';
   ctx.beginPath();
   ctx.moveTo(margin.left, H - margin.bottom);
@@ -354,8 +385,6 @@ function drawUtilBars(canvas, rawSeries, { excludeMortgage = false } = {}) {
   ctx.moveTo(margin.left, H - margin.bottom);
   ctx.lineTo(margin.left, margin.top);
   ctx.stroke();
-
-  // y grid & ticks
   ctx.fillStyle = '#cbd5e1';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
@@ -368,58 +397,41 @@ function drawUtilBars(canvas, rawSeries, { excludeMortgage = false } = {}) {
     ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(W - margin.right, y); ctx.stroke();
     ctx.fillText(`$${v.toLocaleString(undefined,{maximumFractionDigits:0})}`, margin.left - 6, y);
   }
-
-  // bars
   const gap = 14;
   const bw = Math.min(80, Math.max(26, (plotW - gap * (series.length - 1)) / series.length));
   let x = margin.left + (plotW - (series.length * bw + (series.length - 1) * gap)) / 2;
-
   series.forEach((s) => {
     const h = (s.value / max) * plotH;
     const y = H - margin.bottom - h;
-
-    // bar
     ctx.fillStyle = '#ef4444';
     ctx.fillRect(x, y, bw, h);
-
-    // value label
     ctx.fillStyle = '#cbd5e1';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(`$${s.value.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
-                 x + bw / 2, y - 6);
-
-    // x label (angled)
+    ctx.fillText(`$${s.value.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`, x + bw / 2, y - 6);
     ctx.save();
     ctx.translate(x + bw / 2, H - margin.bottom + 6);
-    ctx.rotate(-Math.PI / 6); // ~ -30°
+    ctx.rotate(-Math.PI / 6);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.font = '11px system-ui';
     ctx.fillText(s.label, 0, 0);
     ctx.restore();
-
     x += bw + gap;
   });
 }
-  
 function drawIncomeLines(canvas, incomeRows){
   const { ctx, W, H } = setupCanvas(canvas);
   ctx.clearRect(0,0,W,H);
-
   const margin = { top: 24, right: 140, bottom: 42, left: 56 };
   const plotW = Math.max(1, W - margin.left - margin.right);
   const plotH = Math.max(1, H - margin.top - margin.bottom);
-
   const people = [...new Set(incomeRows.map(r=>r.person))];
   const yms = [...new Set(incomeRows.map(r=>r.ym))].sort((a,b)=> a.localeCompare(b));
   const map = {}; people.forEach(p=> map[p] = {});
   incomeRows.forEach(r=> map[r.person][r.ym] = (map[r.person][r.ym]||0) + Number(r.amount||0));
-
   const values = people.flatMap(p => yms.map(m => map[p][m]||0));
   const max = Math.max(1, ...values);
-
-  // axes
   ctx.strokeStyle = 'rgba(255,255,255,.25)';
   ctx.beginPath();
   ctx.moveTo(margin.left, H - margin.bottom);
@@ -427,8 +439,6 @@ function drawIncomeLines(canvas, incomeRows){
   ctx.moveTo(margin.left, H - margin.bottom);
   ctx.lineTo(margin.left, margin.top);
   ctx.stroke();
-
-  // y grid & ticks
   ctx.fillStyle = '#cbd5e1';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
@@ -441,16 +451,12 @@ function drawIncomeLines(canvas, incomeRows){
     ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(W - margin.right, y); ctx.stroke();
     ctx.fillText(`$${v.toLocaleString(undefined,{maximumFractionDigits:0})}`, margin.left - 6, y);
   }
-
-  // x labels
   const sx = yms.length > 1 ? plotW / (yms.length - 1) : 0;
   ctx.fillStyle = '#cbd5e1';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.font = '12px system-ui';
   yms.forEach((m,i)=> ctx.fillText(m, margin.left + i*sx, H - margin.bottom + 8));
-
-  // series
   const colors = ['#22c55e','#60a5fa','#f59e0b','#e879f9','#f472b6','#a78bfa'];
   people.forEach((p,pi)=>{
     ctx.beginPath();
@@ -463,8 +469,6 @@ function drawIncomeLines(canvas, incomeRows){
       if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     });
     ctx.stroke();
-
-    // legend
     ctx.fillStyle = colors[pi % colors.length];
     ctx.fillRect(W - margin.right + 12, margin.top + pi*18 - 8, 10, 10);
     ctx.fillStyle = '#cbd5e1';
@@ -474,9 +478,7 @@ function drawIncomeLines(canvas, incomeRows){
   });
 }
 
-
-
-/* ---------- Buttons ---------- */
+/* ---------- Buttons (Dashboard) ---------- */
 document.getElementById("btnLoad").onclick = async ()=>{
   const file = document.getElementById("fileInput").files?.[0];
   if(!file){ alert("Choose an XML file first"); return; }
@@ -542,6 +544,7 @@ document.getElementById("btnSample").onclick = ()=>{
   try{ state = stateFromXmlText(sample); saveXmlToStorage(sample); statusEl.textContent = "Loaded sample (saved)"; render(); }
   catch(e){ alert("Sample load failed: "+e.message); }
 };
+document.getElementById("btnClear").onclick = ()=>{ clearStoredXml(); statusEl.textContent = "Saved XML cleared"; };
 
 /* ---- Auto-restore previous XML, then draw ---- */
 (function restore(){
@@ -552,6 +555,135 @@ document.getElementById("btnSample").onclick = ()=>{
     catch(_) {}
   }
   render();
+})();
+  
+/* ========= Tabs ========= */
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-dashboard').style.display = (tab === 'dashboard') ? '' : 'none';
+    document.getElementById('tab-tx').style.display        = (tab === 'tx')        ? '' : 'none';
+  });
+});
+
+/* ========= CSV storage (optional remember) ========= */
+const STORAGE_CSV_KEY = 'financeCSV';
+const STORAGE_CSV_TS  = 'financeCSV_TS';
+function saveCsvToStorage(text){ try{ localStorage.setItem(STORAGE_CSV_KEY,text); localStorage.setItem(STORAGE_CSV_TS,new Date().toISOString()); }catch(e){} }
+function loadCsvFromStorage(){ const csv = localStorage.getItem(STORAGE_CSV_KEY); const ts = localStorage.getItem(STORAGE_CSV_TS); return csv?{csv,ts}:null; }
+function clearStoredCsv(){ localStorage.removeItem(STORAGE_CSV_KEY); localStorage.removeItem(STORAGE_CSV_TS); }
+
+/* ========= Minimal CSV parser (handles quotes/commas/newlines) ========= */
+function parseCSV(text){
+  const rows = []; let row = []; let cell = '';
+  let i=0, q=false;
+  while(i < text.length){
+    const c = text[i++];
+    if (q){
+      if (c === '"'){ if (text[i] === '"'){ cell += '"'; i++; } else { q = false; } }
+      else { cell += c; }
+    } else {
+      if (c === '"') { q = true; }
+      else if (c === ','){ row.push(cell); cell=''; }
+      else if (c === '\n'){ row.push(cell); rows.push(row); row=[]; cell=''; }
+      else if (c === '\r'){ /* ignore */ }
+      else { cell += c; }
+    }
+  }
+  row.push(cell); rows.push(row);
+  while(rows.length && rows[rows.length-1].every(x => x === '')) rows.pop();
+  return rows;
+}
+
+/* ========= Detect common bank schemas ========= */
+function normalizeTxRows(rows){
+  if (!rows.length) return [];
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const idx = name => header.indexOf(name);
+  const iDate = [idx('date'), idx('posted')].find(i => i >= 0);
+  const iDesc = [idx('description'), idx('payee'), idx('memo'), idx('name')].find(i => i >= 0);
+  const iAmt  = [idx('amount')].find(i => i >= 0);
+  const iDeb  = [idx('debit'), idx('withdrawal'), idx('outflow')].find(i => i >= 0);
+  const iCre  = [idx('credit'), idx('deposit'), idx('inflow')].find(i => i >= 0);
+
+  const out = [];
+  for (let r = 1; r < rows.length; r++){
+    const cols = rows[r];
+    const date = (iDate != null && cols[iDate]) ? cols[iDate].trim() : '';
+    const desc = (iDesc != null && cols[iDesc]) ? cols[iDesc].trim() : '';
+    let amt = 0;
+    if (iAmt != null && cols[iAmt] !== undefined && cols[iAmt] !== ''){
+      amt = Number(String(cols[iAmt]).replace(/[$,]/g,''));
+    } else if (iDeb != null || iCre != null){
+      const deb = iDeb != null ? Number(String(cols[iDeb]||'0').replace(/[$,]/g,'')) : 0;
+      const cre = iCre != null ? Number(String(cols[iCre]||'0').replace(/[$,]/g,'')) : 0;
+      amt = cre - deb; // credits positive, debits negative
+    }
+    if (isNaN(amt)) continue;
+    const d = new Date(date);
+    const iso = isNaN(d) ? date : d.toISOString().slice(0,10);
+    out.push({ dateRaw: date, dateIso: iso, desc, amount: amt });
+  }
+  return out;
+}
+
+/* ========= Render & filter ========= */
+function renderTxTable(tx, threshold){
+  const tbody = document.querySelector('#tblTx tbody');
+  tbody.innerHTML = '';
+  const filtered = tx.filter(t => Math.abs(t.amount) >= threshold)
+                     .sort((a,b) => (b.dateIso || '').localeCompare(a.dateIso || ''));
+  for (const t of filtered){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${t.dateRaw || t.dateIso}</td>
+      <td>${t.desc || ''}</td>
+      <td class="right">${(t.amount<0?'-':'') + '$' + Math.abs(t.amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  document.getElementById('txStatus').textContent = `${filtered.length} transactions ≥ $${threshold}`;
+}
+
+/* ========= Wire buttons (Transactions tab) ========= */
+let txRows = [];
+
+document.getElementById('btnLoadCsv').onclick = async ()=>{
+  const f = document.getElementById('csvInput').files?.[0];
+  if(!f){ alert('Choose a CSV file first'); return; }
+  const raw = await f.text();
+  const rows = parseCSV(raw);
+  txRows = normalizeTxRows(rows);
+  const thr = Number(document.getElementById('txThreshold').value || 500);
+  renderTxTable(txRows, thr);
+  document.getElementById('txStatus').textContent += ' (not saved)';
+};
+
+document.getElementById('txThreshold').addEventListener('change', ()=>{
+  const thr = Number(document.getElementById('txThreshold').value || 500);
+  renderTxTable(txRows, thr);
+});
+
+document.getElementById('btnSaveCsv').onclick = ()=>{
+  if (!txRows.length){ alert('Load a CSV first.'); return; }
+  const f = document.getElementById('csvInput').files?.[0];
+  if (f){ f.text().then(text => { saveCsvToStorage(text); document.getElementById('txStatus').textContent += ' • saved'; }); }
+};
+
+document.getElementById('btnClearCsv').onclick = ()=>{ clearStoredCsv(); document.getElementById('txStatus').textContent = 'Saved CSV cleared'; };
+
+/* ========= Auto-restore saved CSV at startup ========= */
+(function restoreCsv(){
+  const saved = loadCsvFromStorage();
+  if (!saved) return;
+  const rows = parseCSV(saved.csv);
+  txRows = normalizeTxRows(rows);
+  const thr = Number(document.getElementById('txThreshold').value || 500);
+  renderTxTable(txRows, thr);
+  const ts = new Date(saved.ts).toLocaleString();
+  document.getElementById('txStatus').textContent = `Loaded saved CSV (${ts})`;
 })();
 </script>
 
